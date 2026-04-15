@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "ScannedMessage": {
+      "title": "Scanned Message",
+      "description": "A message scanned by the system for potential scams.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The raw text of the message." },
+        "riskPercentage": { "type": "number", "description": "The calculated risk percentage (0-100)." },
+        "reason": { "type": "string", "description": "The primary reason for the risk score." },
+        "layersResults": { "type": "object", "description": "Detailed results from the 5-layer analysis." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the scan occurred." },
+        "userId": { "type": "string", "description": "The ID of the user who scanned the message." }
+      },
+      "required": ["content", "riskPercentage", "reason", "timestamp", "userId"]
+    },
+    "OfficialChannel": {
+      "title": "Official Channel",
+      "description": "A verified official communication channel for DUT.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["email", "sms", "url"], "description": "The type of channel." },
+        "value": { "type": "string", "description": "The verified value (e.g., @dut.ac.za)." },
+        "description": { "type": "string", "description": "Description of the channel." }
+      },
+      "required": ["type", "value"]
+    },
+    "ScamReport": {
+      "title": "Scam Report",
+      "description": "A report of a potential scam submitted by a student.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The scam content reported." },
+        "reporterId": { "type": "string", "description": "The ID of the reporter." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the report was made." },
+        "status": { "type": "string", "enum": ["pending", "verified", "dismissed"], "description": "Status of the report." }
+      },
+      "required": ["content", "reporterId", "timestamp", "status"]
+    }
+  },
+  "firestore": {
+    "/scannedMessages/{messageId}": {
+      "schema": "ScannedMessage",
+      "description": "Collection of scanned messages for students."
+    },
+    "/officialChannels/{channelId}": {
+      "schema": "OfficialChannel",
+      "description": "Collection of verified DUT official channels."
+    },
+    "/scamReports/{reportId}": {
+      "schema": "ScamReport",
+      "description": "Collection of student-submitted scam reports."
+    }
+  }
+}

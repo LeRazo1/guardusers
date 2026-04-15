@@ -1,0 +1,5 @@
+{
+  "name": "Reg-Guard Genius",
+  "description": "A specialized NLP and ML classification framework designed to protect students from registration scams.",
+  "requestFramePermissions": ["geolocation"]
+}

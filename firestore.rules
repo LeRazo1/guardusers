@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: scannedMessages
+    // Fields:
+    //   - content: string
+    //   - riskPercentage: number
+    //   - reason: string
+    //   - layersResults: map
+    //   - timestamp: timestamp
+    //   - userId: string (owner)
+    //
+    // Collection: officialChannels
+    // Fields:
+    //   - type: string
+    //   - value: string
+    //   - description: string
+    //
+    // Collection: scamReports
+    // Fields:
+    //   - content: string
+    //   - reporterId: string
+    //   - timestamp: timestamp
+    //   - status: string
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "londekablessing5@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    // Validation Functions
+    function isValidScannedMessage(data) {
+      return data.content is string && data.content.size() < 5000 &&
+             data.riskPercentage is number && data.riskPercentage >= 0 && data.riskPercentage <= 100 &&
+             data.reason is string && data.reason.size() < 1000 &&
+             (data.userId == 'anonymous' || (isAuthenticated() && data.userId == request.auth.uid)) &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidScamReport(data) {
+      return data.content is string && data.content.size() < 5000 &&
+             (data.reporterId == 'anonymous' || (isAuthenticated() && data.reporterId == request.auth.uid)) &&
+             data.status in ['pending', 'verified', 'dismissed'] &&
+             data.timestamp is timestamp;
+    }
+
+    // Rules
+    match /scannedMessages/{messageId} {
+      allow read: if true; // Allow reading by ID (needed for local history)
+      allow create: if isValidScannedMessage(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /officialChannels/{channelId} {
+      allow read: if true;
+      allow write: if false; // Admin only (manually via console for now since we removed login)
+    }
+
+    match /scamReports/{reportId} {
+      allow read: if false; // Private
+      allow create: if isValidScamReport(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
