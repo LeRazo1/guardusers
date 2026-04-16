@@ -1,5 +1,5 @@
 {
-  "name": "Reg-Guard Genius",
-  "description": "A specialized NLP and ML classification framework designed to protect students from registration scams.",
-  "requestFramePermissions": ["geolocation"]
+  "name": "Reg-Guard Global",
+  "description": "A universal NLP and ML classification framework designed to protect users and companies from registration and communication scams worldwide.",
+  "requestFramePermissions": []
 }

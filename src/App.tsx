@@ -26,37 +26,48 @@ function cn(...inputs: ClassValue[]) {
 
 // --- Types ---
 const SYSTEM_PROMPT = `
-You are the Reg-Guard Genius AI, a specialized NLP and ML classification framework designed to protect students from registration scams.
-The primary mission of this system is to TRACE and IDENTIFY the origin of scam messages to help "catch the scammer".
+You are the Reg-Guard Global AI, a universal NLP and ML classification framework designed to protect users and companies from registration and communication scams.
+The primary mission of this system is to TRACE and IDENTIFY the origin of scam messages to help "catch the scammer" across any industry or organization.
 
 Your analysis must be structured around 5 classification layers:
 1. Urgency-based language detection: Identifying high-pressure tactics.
-2. Financial solicitation analysis: Detecting requests for payments via unofficial channels.
-3. Suspicious URL/link analysis: Flagging non-official URLs. Official DUT domains are: dut.ac.za, dut4life.ac.za.
-4. Impersonation detection: Checking if the sender claims to be a DUT official but uses unofficial contact methods.
-5. Linguistic pattern analysis: Analyzing lexical, syntactic, semantic, and pragmatic features that deviate from official DUT communication styles.
+2. Financial solicitation analysis: Detecting requests for payments via unofficial channels (e.g., personal bank accounts, crypto, gift cards).
+3. Suspicious URL/link analysis: Flagging non-official URLs. Compare the provided URL against the claimed company's official domain.
+4. Impersonation detection: Checking if the sender claims to be an official from a known company (e.g., DUT, Banks, Government, HR) but uses unofficial contact methods.
+5. Linguistic pattern analysis: Analyzing lexical, syntactic, semantic, and pragmatic features that deviate from professional corporate communication styles.
 
 6. Input Context Awareness (CRITICAL): 
 - If the message is marked as 'TYPED', it is a "User Simulation". It is NOT a real scam message. You MUST explicitly state this in the 'reason' and set the risk score to 0% (unless it's a perfect replica for training).
 - If the message is 'PASTED', it is a "Live Threat". Treat it as a real-world message received by the user.
 
-7. Geographic Origin Analysis & Scammer Tracing:
+7. Geographic Origin Analysis & Scammer Tracing (GLOBAL):
 - Analyze the sender's phone number or ID. 
-- Official DUT communications usually come from short codes or verified "DUT" alphanumeric IDs.
-- If the number is a personal mobile number (e.g., starting with +27 6, +27 7, +27 8 in SA) but claims to be official, this is a major red flag.
-- Cross-reference the area code if provided (e.g., 031 for Durban is expected for local DUT offices, but a personal mobile number is suspicious).
+- Official corporate communications usually come from verified short codes or alphanumeric IDs.
+- If the number is a personal mobile number but claims to be official, this is a major red flag.
+- Cross-reference the country code and area code.
 - Provide a "geographicOrigin" string describing the suspected location or carrier type.
 
-8. Network Connectivity & Tower Analysis:
-- Based on the sender's number prefix and area code, estimate the likely network carrier (e.g., Vodacom, MTN, Telkom, Cell C).
-- Provide a simulated "towerInfo" object containing a likely Tower ID and approximate location (e.g., "Durban Central Sector 4") where the sender is likely receiving connectivity.
-- Use this data to create a "Scammer Profile" that helps the user understand exactly where the threat is coming from.
+8. Network Connectivity & Tower Analysis (HIGH PRECISION):
+- STEP 1: Identify the Country Code. If +27 or 0, it's South Africa.
+- STEP 2: Identify the Prefix.
+  * If it's a 3-digit area code (01x, 02x, 03x, 04x, 05x), map it to the city/region.
+  * If it's a mobile prefix (08x, 07x, 06x), it's a national mobile number.
+- STEP 3: For Mobile Numbers, simulate a location in a major SA city (Durban, Joburg, Cape Town, Pretoria) based on the "Scammer Profile" logic. Scammers often operate from high-density urban areas.
+- STEP 4: Generate a specific suburb. 
+  * Durban: Berea, Umhlanga, Chatsworth, Phoenix, Morningside, Glenwood, Musgrave, Greyville.
+  * Joburg: Sandton, Soweto, Randburg, Braamfontein, Rosebank, Melville, Midrand.
+  * Cape Town: Bellville, Khayelitsha, Sea Point, Wynberg, Claremont, Milnerton.
+  * Pretoria: Hatfield, Arcadia, Sunnyside, Centurion, Menlyn, Silverton.
+- STEP 5: Provide a "towerInfo" object that reflects the "Last Known Cell Tower" used by the sender.
+- The "location" field MUST be extremely specific (e.g., "Morningside Sector 4, Durban" or "Hatfield Hub, Pretoria").
+- The "id" field should look like a real CID (e.g., "CID-40522-KZN").
+- DO NOT use generic regions like "South Africa" or "Durban" alone; always include a specific suburb, sector, or neighborhood based on the area code and prefix metadata.
+- Use this data to create a high-precision "Scammer Profile".
 
 Context for 2026:
-- Official registration is only done via the DUT student portal (https://www.dut.ac.za/student_portal/).
-- DUT never asks for payments via WhatsApp or personal bank accounts.
-- Official emails always end in @dut.ac.za or @dut4life.ac.za.
-- Official SMS will identify as "DUT" or "Durban University of Technology".
+- Scammers frequently impersonate Universities (like DUT), Banks, and Logistics companies.
+- Official communications never ask for payments via personal accounts or WhatsApp.
+- Always verify the sender's ID against known official channels.
 
 9. Trace by Number Only:
 - If the user provides ONLY a sender number and no message content, perform a "Number Reputation Check".
@@ -309,21 +320,12 @@ export default function App() {
     try {
       // Initialize Gemini AI with the platform-provided key
       // The platform handles injecting process.env.GEMINI_API_KEY into the Vite build
-      let apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY || (process.env as any).API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY;
       
-      // Fallback for AI Studio environment if key is missing
-      if ((!apiKey || apiKey === 'undefined' || apiKey === '') && (window as any).aistudio) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-          toast.info("Please select an API key to continue.");
-          await (window as any).aistudio.openSelectKey();
-          // After opening the dialog, we assume the key will be injected
-          apiKey = process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
-        }
-      }
-
       if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-        throw new Error("Gemini API Key is missing. Please add it in 'Settings > Secrets' or select one via the prompt.");
+        toast.error("Gemini API Key is missing. Please ensure it is set in 'Settings > Secrets'.");
+        setIsScanning(false);
+        return;
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -818,7 +820,7 @@ export default function App() {
                                 </div>
                                 <div>
                                   <h3 className="text-2xl font-black tracking-tight">Scammer Profile</h3>
-                                  <p className="text-blue-100 text-xs font-bold uppercase tracking-widest">Threat Intelligence Report</p>
+                                  <p className="text-blue-100 text-xs font-bold uppercase tracking-widest">Simulated Threat Intelligence</p>
                                 </div>
                               </div>
                               <button 
@@ -854,14 +856,14 @@ export default function App() {
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Carrier Node</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Sender's Carrier / Tower ID</p>
                                 <p className="font-bold text-gray-800">{selectedScam.towerInfo?.carrier || 'Unknown Network'}</p>
                                 <p className="text-[10px] font-mono text-blue-600 mt-1">{selectedScam.towerInfo?.id || 'NODE-ID-PENDING'}</p>
                               </div>
                               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Suspected Location</p>
+                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Sender's Last Known Location</p>
                                 <p className="font-bold text-gray-800">{selectedScam.towerInfo?.location || selectedScam.geographicOrigin || 'Unknown'}</p>
-                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Proximity: {selectedScam.towerInfo?.distance || 'Within Region'}</p>
+                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Triangulation: {selectedScam.towerInfo?.distance || 'Within Region'}</p>
                               </div>
                             </div>
                           </div>
@@ -878,6 +880,16 @@ export default function App() {
 
                           {/* AI Analysis Layers */}
                           <div className="space-y-4">
+                            <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100">
+                              <div className="flex items-center gap-2 text-blue-700 mb-2">
+                                <Info className="w-5 h-5" />
+                                <h3 className="font-bold text-sm">Intelligence Disclaimer</h3>
+                              </div>
+                              <p className="text-[10px] text-blue-800 leading-relaxed opacity-80">
+                                This location data represents the <strong>sender's</strong> suspected origin, not yours. 
+                                It is simulated based on the sender's network prefix metadata and carrier triangulation patterns.
+                              </p>
+                            </div>
                             <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                               <Shield className="w-4 h-4" /> 5-Layer Analysis
                             </h4>
@@ -963,7 +975,7 @@ export default function App() {
                                 if (e.target.value.length < 5) setInputSource('typed');
                               }}
                               onPaste={() => setInputSource('pasted')}
-                              placeholder="e.g. DUT: Your registration is pending... (Optional if tracing number)"
+                              placeholder="e.g. Bank: Your account is locked... (Optional if tracing number)"
                               className="w-full h-40 p-6 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all resize-none text-gray-800 font-medium"
                             />
                             <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -1010,7 +1022,7 @@ export default function App() {
                         <div className="bg-blue-100 p-2 rounded-xl"><Globe className="w-5 h-5 text-blue-600" /></div>
                         <div>
                           <p className="text-xs font-bold text-gray-900">URL Analysis</p>
-                          <p className="text-[10px] text-gray-500">Verifies official DUT domains</p>
+                          <p className="text-[10px] text-gray-500">Verifies official company domains</p>
                         </div>
                       </div>
                     </div>
@@ -1037,25 +1049,25 @@ export default function App() {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-6"
                   >
-                    <h2 className="text-2xl font-black tracking-tight">Official DUT Channels 2026</h2>
+                    <h2 className="text-2xl font-black tracking-tight">Official Verification Channels</h2>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="bg-blue-100 p-3 rounded-2xl text-blue-600"><Globe className="w-6 h-6" /></div>
                           <div>
-                            <p className="font-bold text-gray-900">Student Portal</p>
-                            <p className="text-sm text-gray-500">https://www.dut.ac.za/student_portal/</p>
+                            <p className="font-bold text-gray-900">Official Portals</p>
+                            <p className="text-sm text-gray-500">Always use the official company website.</p>
                           </div>
                         </div>
-                        <a href="https://www.dut.ac.za/student_portal/" target="_blank" className="p-2 hover:bg-gray-50 rounded-xl text-blue-600"><ExternalLink className="w-5 h-5" /></a>
+                        <CheckCircle className="w-5 h-5 text-emerald-500" />
                       </div>
                       
                       <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="bg-purple-100 p-3 rounded-2xl text-purple-600"><MessageSquare className="w-6 h-6" /></div>
                           <div>
-                            <p className="font-bold text-gray-900">Official Email Domains</p>
-                            <p className="text-sm text-gray-500">@dut.ac.za, @dut4life.ac.za</p>
+                            <p className="font-bold text-gray-900">Corporate Email Domains</p>
+                            <p className="text-sm text-gray-500">e.g., @company.com, @gov.za</p>
                           </div>
                         </div>
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -1065,8 +1077,8 @@ export default function App() {
                         <div className="flex items-center gap-4">
                           <div className="bg-amber-100 p-3 rounded-2xl text-amber-600"><Smartphone className="w-6 h-6" /></div>
                           <div>
-                            <p className="font-bold text-gray-900">Official SMS Sender</p>
-                            <p className="text-sm text-gray-500">DUT, Durban University of Technology</p>
+                            <p className="font-bold text-gray-900">Verified SMS Senders</p>
+                            <p className="text-sm text-gray-500">Look for alphanumeric IDs (e.g., 'BANK-NAME')</p>
                           </div>
                         </div>
                         <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -1076,10 +1088,10 @@ export default function App() {
                     <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
                       <div className="flex items-center gap-2 text-amber-700 mb-2">
                         <AlertTriangle className="w-5 h-5" />
-                        <h3 className="font-bold">Security Warning</h3>
+                        <h3 className="font-bold">Global Security Warning</h3>
                       </div>
                       <p className="text-sm text-amber-800 leading-relaxed">
-                        DUT will <strong>never</strong> ask you for your password, banking details, or payment via WhatsApp, Telegram, or personal email accounts. Always verify via the official portal.
+                        Official organizations will <strong>never</strong> ask you for your password, banking details, or payment via WhatsApp, Telegram, or personal email accounts. Always verify via official channels.
                       </p>
                     </div>
                   </motion.div>
