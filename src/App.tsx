@@ -57,6 +57,11 @@ Context for 2026:
 - DUT never asks for payments via WhatsApp or personal bank accounts.
 - Official emails always end in @dut.ac.za or @dut4life.ac.za.
 - Official SMS will identify as "DUT" or "Durban University of Technology".
+
+9. Trace by Number Only:
+- If the user provides ONLY a sender number and no message content, perform a "Number Reputation Check".
+- Analyze the prefix and format. Personal numbers (e.g., +27 60, +27 72) claiming to be "DUT" are always 100% risk.
+- Provide the geographic origin and tower info based on the number's metadata.
 `;
 
 interface ScanResult {
@@ -242,7 +247,9 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ScannedMessage));
-      setScanHistory(docs);
+      // Ensure unique docs by ID
+      const uniqueDocs = Array.from(new Map(docs.map(item => [item.id, item])).values());
+      setScanHistory(uniqueDocs);
     }, (error) => {
       console.error("Error fetching user history:", error);
       if (error.message.includes("requires an index")) {
@@ -262,18 +269,23 @@ export default function App() {
       return;
     }
     
-    // We'll fetch the specific documents by ID
-    // Firestore doesn't support 'in' with more than 30 IDs easily, 
-    // but for local history this is usually fine.
+    const uniqueIds = Array.from(new Set(localHistoryIds)).slice(0, 30);
+    if (uniqueIds.length === 0) {
+      setScanHistory([]);
+      return;
+    }
+
     const q = query(
       collection(db, 'scannedMessages'),
-      where(documentId(), 'in', localHistoryIds.slice(0, 30))
+      where(documentId(), 'in', uniqueIds)
     );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ScannedMessage));
+      // Ensure unique docs by ID
+      const uniqueDocs = Array.from(new Map(docs.map(item => [item.id, item])).values());
       // Sort by timestamp manually since 'in' doesn't preserve order
-      setScanHistory(docs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis()));
+      setScanHistory(uniqueDocs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis()));
     });
     return unsubscribe;
   }, [localHistoryIds]);
@@ -288,98 +300,110 @@ export default function App() {
   }, []);
 
   const handleScan = async () => {
-    if (!messageToScan.trim()) return;
+    if (!messageToScan.trim() && !senderNumber.trim()) {
+      toast.error("Please provide a message or a sender number to trace.");
+      return;
+    }
 
     setIsScanning(true);
     try {
       // Initialize Gemini AI with the platform-provided key
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("Gemini API Key is not configured. Please add it in Settings > Secrets.");
+      // The platform handles injecting process.env.GEMINI_API_KEY into the Vite build
+      let apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY || (process.env as any).API_KEY;
+      
+      // Fallback for AI Studio environment if key is missing
+      if ((!apiKey || apiKey === 'undefined' || apiKey === '') && (window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          toast.info("Please select an API key to continue.");
+          await (window as any).aistudio.openSelectKey();
+          // After opening the dialog, we assume the key will be injected
+          apiKey = process.env.GEMINI_API_KEY || (process.env as any).API_KEY;
+        }
+      }
+
+      if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+        throw new Error("Gemini API Key is missing. Please add it in 'Settings > Secrets' or select one via the prompt.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
       
-      console.log("Calling Gemini AI directly from client...");
+      console.log("Calling Gemini AI from client...");
       
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Analyze this message for registration scams. 
-          INPUT METHOD: ${inputSource.toUpperCase()}
-          SENDER NUMBER: ${senderNumber || 'Unknown'}
-          MESSAGE: "${messageToScan}"`,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                riskPercentage: { type: Type.NUMBER },
-                reason: { type: Type.STRING },
-                inputSource: { type: Type.STRING },
-                geographicOrigin: { type: Type.STRING },
-                towerInfo: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.STRING },
-                    location: { type: Type.STRING },
-                    carrier: { type: Type.STRING },
-                    distance: { type: Type.STRING }
-                  },
-                  required: ["id", "location", "carrier", "distance"]
-                },
-                layersResults: {
-                  type: Type.OBJECT,
-                  properties: {
-                    urgency: { 
-                      type: Type.OBJECT, 
-                      properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
-                      required: ["score", "details"]
-                    },
-                    financial: { 
-                      type: Type.OBJECT, 
-                      properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
-                      required: ["score", "details"]
-                    },
-                    url: { 
-                      type: Type.OBJECT, 
-                      properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
-                      required: ["score", "details"]
-                    },
-                    impersonation: { 
-                      type: Type.OBJECT, 
-                      properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
-                      required: ["score", "details"]
-                    },
-                    linguistic: { 
-                      type: Type.OBJECT, 
-                      properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
-                      required: ["score", "details"]
-                    }
-                  },
-                  required: ["urgency", "financial", "url", "impersonation", "linguistic"]
-                }
-              },
-              required: ["riskPercentage", "reason", "inputSource", "geographicOrigin", "towerInfo", "layersResults"]
-            }
-          },
-        });
-      } catch (schemaError: any) {
-        console.warn("Schema-based AI call failed, falling back to simple call:", schemaError);
-        response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: `Analyze this message for registration scams and return JSON. 
-          INPUT METHOD: ${inputSource.toUpperCase()}
-          SENDER NUMBER: ${senderNumber || 'Unknown'}
-          MESSAGE: "${messageToScan}"`,
-          config: {
-            systemInstruction: SYSTEM_PROMPT + "\n\nOutput MUST be valid JSON matching the schema: { riskPercentage: number, reason: string, inputSource: string, geographicOrigin: string, towerInfo: {id, location, carrier, distance}, layersResults: { urgency: {score, details}, financial: {score, details}, url: {score, details}, impersonation: {score, details}, linguistic: {score, details} } }",
-            responseMimeType: "application/json",
-          },
-        });
+      // Simple cache check to save quota
+      const existingScan = scanHistory.find(s => s.content === messageToScan && s.senderNumber === senderNumber);
+      if (existingScan) {
+        toast.info("Loading result from history to save quota...");
+        setScanResult(existingScan);
+        setActiveTab('dashboard');
+        setIsScanning(false);
+        return;
       }
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyze this communication for registration scams. 
+        INPUT METHOD: ${inputSource.toUpperCase()}
+        SENDER NUMBER: ${senderNumber || 'Unknown'}
+        MESSAGE CONTENT: "${messageToScan || 'No message content provided - trace by number only'}"
+        
+        If no message content is provided, focus your analysis on the sender number's reputation, geographic origin, and likely network carrier.`,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              riskPercentage: { type: Type.NUMBER },
+              reason: { type: Type.STRING },
+              inputSource: { type: Type.STRING },
+              geographicOrigin: { type: Type.STRING },
+              towerInfo: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  carrier: { type: Type.STRING },
+                  distance: { type: Type.STRING }
+                },
+                required: ["id", "location", "carrier", "distance"]
+              },
+              layersResults: {
+                type: Type.OBJECT,
+                properties: {
+                  urgency: { 
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                    required: ["score", "details"]
+                  },
+                  financial: { 
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                    required: ["score", "details"]
+                  },
+                  url: { 
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                    required: ["score", "details"]
+                  },
+                  impersonation: { 
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                    required: ["score", "details"]
+                  },
+                  linguistic: { 
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                    required: ["score", "details"]
+                  }
+                },
+                required: ["urgency", "financial", "url", "impersonation", "linguistic"]
+              }
+            },
+            required: ["riskPercentage", "reason", "inputSource", "geographicOrigin", "towerInfo", "layersResults"]
+          }
+        }
+      });
 
       if (!response.text) {
         throw new Error("AI returned an empty response");
@@ -388,13 +412,12 @@ export default function App() {
       const result: ScanResult = JSON.parse(response.text);
       console.log("Scan Result:", result);
       
-      const currentMessage = messageToScan; // Capture current message
+      const currentMessage = messageToScan;
       const currentSender = senderNumber;
       let savedId = Date.now().toString();
       try {
         const docRef = await addDoc(collection(db, 'scannedMessages'), {
           ...result,
-          inputSource: result.inputSource || inputSource,
           content: currentMessage,
           senderNumber: currentSender,
           userId: user?.uid || 'anonymous',
@@ -406,7 +429,7 @@ export default function App() {
         toast.error("Analysis complete, but failed to save to history.");
       }
 
-      const newHistory = [savedId, ...localHistoryIds].slice(0, 50);
+      const newHistory = Array.from(new Set([savedId, ...localHistoryIds])).slice(0, 50);
       setLocalHistoryIds(newHistory);
       localStorage.setItem('reg_guard_genius_history', JSON.stringify(newHistory));
 
@@ -698,7 +721,7 @@ export default function App() {
                           <div className="flex items-center justify-between">
                             <div className="grid grid-cols-5 gap-2">
                               {scanResult.layersResults && Object.entries(scanResult.layersResults).map(([key, val]: [string, any]) => (
-                                <div key={key} className="flex flex-col items-center gap-2">
+                                <div key={`scan-result-layer-${key}`} className="flex flex-col items-center gap-2">
                                   <div className={cn(
                                     "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black shadow-lg",
                                     val.score > 70 ? "bg-red-500" : val.score > 30 ? "bg-amber-500" : "bg-emerald-500"
@@ -859,142 +882,8 @@ export default function App() {
                               <Shield className="w-4 h-4" /> 5-Layer Analysis
                             </h4>
                             <div className="space-y-3">
-                              {Object.entries(selectedScam.layersResults).map(([key, val]) => (
-                                <div key={key} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold capitalize text-gray-800">{key} Analysis</span>
-                                    <div className={cn(
-                                      "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                                      val.score > 70 ? "bg-red-100 text-red-700" : val.score > 30 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                    )}>
-                                      {val.score}% Match
-                                    </div>
-                                  </div>
-                                  <p className="text-xs text-gray-500 leading-relaxed">{val.details}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-4 pt-4">
-                            <button 
-                              onClick={() => {
-                                handleReportScam(selectedScam);
-                                setSelectedScam(null);
-                              }}
-                              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-100"
-                            >
-                              <Flag className="w-5 h-5" /> Report to Authorities
-                            </button>
-                            <button 
-                              onClick={() => {
-                                toast.info("Scam data exported for carrier review");
-                                setSelectedScam(null);
-                              }}
-                              className="flex-1 bg-gray-900 hover:bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all"
-                            >
-                              <Share2 className="w-5 h-5" /> Export Intelligence
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Scammer Profile Modal */}
-                <AnimatePresence>
-                  {selectedScam && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-                      onClick={() => setSelectedScam(null)}
-                    >
-                      <motion.div 
-                        initial={{ scale: 0.9, y: 20 }}
-                        animate={{ scale: 1, y: 0 }}
-                        exit={{ scale: 0.9, y: 20 }}
-                        className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="bg-blue-600 p-8 text-white relative">
-                          <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-6">
-                              <div className="flex items-center gap-3">
-                                <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
-                                  <ShieldAlert className="w-8 h-8" />
-                                </div>
-                                <div>
-                                  <h3 className="text-2xl font-black tracking-tight">Scammer Profile</h3>
-                                  <p className="text-blue-100 text-xs font-bold uppercase tracking-widest">Threat Intelligence Report</p>
-                                </div>
-                              </div>
-                              <button 
-                                onClick={() => setSelectedScam(null)}
-                                className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
-                              >
-                                <X className="w-6 h-6" />
-                              </button>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                                <p className="text-[10px] font-bold text-blue-200 uppercase mb-1">Risk Level</p>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-3xl font-black">{selectedScam.riskPercentage}%</div>
-                                  <RiskBadge risk={selectedScam.riskPercentage} />
-                                </div>
-                              </div>
-                              <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                                <p className="text-[10px] font-bold text-blue-200 uppercase mb-1">Source Type</p>
-                                <div className="text-xl font-bold capitalize">{selectedScam.inputSource || 'Live Threat'}</div>
-                              </div>
-                            </div>
-                          </div>
-                          <Globe className="absolute -bottom-12 -right-12 w-64 h-64 text-white/5" />
-                        </div>
-
-                        <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
-                          {/* Origin & Network Section */}
-                          <div className="space-y-4">
-                            <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                              <MapPin className="w-4 h-4" /> Origin Triangulation
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Carrier Node</p>
-                                <p className="font-bold text-gray-800">{selectedScam.towerInfo?.carrier || 'Unknown Network'}</p>
-                                <p className="text-[10px] font-mono text-blue-600 mt-1">{selectedScam.towerInfo?.id || 'NODE-ID-PENDING'}</p>
-                              </div>
-                              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Suspected Location</p>
-                                <p className="font-bold text-gray-800">{selectedScam.towerInfo?.location || selectedScam.geographicOrigin || 'Unknown'}</p>
-                                <p className="text-[10px] text-emerald-600 font-bold mt-1">Proximity: {selectedScam.towerInfo?.distance || 'Within Region'}</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Message Details */}
-                          <div className="space-y-4">
-                            <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                              <MessageSquare className="w-4 h-4" /> Scam Content
-                            </h4>
-                            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 italic text-gray-700 leading-relaxed">
-                              "{selectedScam.content}"
-                            </div>
-                          </div>
-
-                          {/* AI Analysis Layers */}
-                          <div className="space-y-4">
-                            <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                              <Shield className="w-4 h-4" /> 5-Layer Analysis
-                            </h4>
-                            <div className="space-y-3">
-                              {Object.entries(selectedScam.layersResults).map(([key, val]) => (
-                                <div key={key} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                              {Object.entries(selectedScam.layersResults).map(([key, val]: [string, any]) => (
+                                <div key={`modal-layer-${key}`} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-bold capitalize text-gray-800">{key} Analysis</span>
                                     <div className={cn(
@@ -1045,7 +934,7 @@ export default function App() {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-6"
                   >
-                    <h2 className="text-2xl font-black tracking-tight">Scan New Message</h2>
+                    <h2 className="text-2xl font-black tracking-tight">Trace Scam / Scan Message</h2>
                     <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-xl shadow-blue-50">
                       <div className="space-y-4">
                         <div>
@@ -1074,7 +963,7 @@ export default function App() {
                                 if (e.target.value.length < 5) setInputSource('typed');
                               }}
                               onPaste={() => setInputSource('pasted')}
-                              placeholder="e.g. DUT: Your registration is pending. Pay R1500 to account 123456789 to secure your spot immediately..."
+                              placeholder="e.g. DUT: Your registration is pending... (Optional if tracing number)"
                               className="w-full h-40 p-6 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all resize-none text-gray-800 font-medium"
                             />
                             <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -1090,21 +979,20 @@ export default function App() {
                       </div>
                       <button 
                         onClick={handleScan}
-                        disabled={isScanning || !messageToScan.trim()}
+                        disabled={isScanning || (!messageToScan.trim() && !senderNumber.trim())}
                         className={cn(
                           "w-full mt-6 py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all",
-                          isScanning || !messageToScan.trim() ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100"
+                          isScanning || (!messageToScan.trim() && !senderNumber.trim()) ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100"
                         )}
                       >
                         {isScanning ? (
                           <>
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Analyzing Layers...
+                            Tracing Origin...
                           </>
                         ) : (
                           <>
-                            <Shield className="w-6 h-6" />
-                            Run 5-Layer Analysis
+                            <Shield className="w-6 h-6" /> Trace & Identify Threat
                           </>
                         )}
                       </button>
@@ -1125,6 +1013,18 @@ export default function App() {
                           <p className="text-[10px] text-gray-500">Verifies official DUT domains</p>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100">
+                      <div className="flex items-center gap-2 text-blue-700 mb-2">
+                        <Shield className="w-5 h-5" />
+                        <h3 className="font-bold">AI Studio Free Tier</h3>
+                      </div>
+                      <p className="text-sm text-blue-800 leading-relaxed">
+                        This app uses the <strong>Gemini 3 Flash</strong> model on the free tier. 
+                        If you encounter "Quota Exceeded" errors, please wait a few minutes or try again tomorrow. 
+                        Ensure your API key is correctly set in <strong>Settings &gt; Secrets</strong>.
+                      </p>
                     </div>
                   </motion.div>
                 )}
