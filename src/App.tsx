@@ -16,7 +16,7 @@ import {
   getDocFromServer,
   documentId
 } from 'firebase/firestore';
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { jsPDF } from "jspdf";
@@ -419,73 +419,79 @@ export default function App() {
 
     setIsScanning(true);
     try {
-      // Initialize Gemini AI with the platform-provided key
-      // The platform handles injecting process.env.GEMINI_API_KEY into the Vite build
-      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY;
       
       if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
-        toast.error("AI analysis is currently unavailable.");
-        setIsScanning(false);
-        return;
+        throw new Error("API_KEY_MISSING");
       }
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: {
+      const ai = new GoogleGenAI({ apiKey });
+      
+      console.log("Calling Gemini AI from client...");
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyze this communication for registration scams. 
+        INPUT METHOD: ${inputSource.toUpperCase()}
+        SENDER NUMBER: ${senderNumber || 'Unknown'}
+        MESSAGE CONTENT: "${messageToScan || 'No message content provided - trace by number only'}"
+        
+        If no message content is provided, focus your analysis on the sender number's reputation, geographic origin, and likely network carrier.`,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: {
-            type: SchemaType.OBJECT,
+            type: Type.OBJECT,
             properties: {
-              riskPercentage: { type: SchemaType.NUMBER },
-              reason: { type: SchemaType.STRING },
-              inputSource: { type: SchemaType.STRING },
-              geographicOrigin: { type: SchemaType.STRING },
+              riskPercentage: { type: Type.NUMBER },
+              reason: { type: Type.STRING },
+              inputSource: { type: Type.STRING },
+              geographicOrigin: { type: Type.STRING },
               identityIntelligence: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                  normalizedNumber: { type: SchemaType.STRING },
-                  reputationScore: { type: SchemaType.NUMBER },
-                  threatActorProfile: { type: SchemaType.STRING },
-                  isSpoofed: { type: SchemaType.BOOLEAN }
+                  normalizedNumber: { type: Type.STRING },
+                  reputationScore: { type: Type.NUMBER },
+                  threatActorProfile: { type: Type.STRING },
+                  isSpoofed: { type: Type.BOOLEAN }
                 },
                 required: ["normalizedNumber", "reputationScore", "isSpoofed"]
               },
               urlForensics: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                  extractedUrls: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                  brandSpoofing: { type: SchemaType.BOOLEAN },
-                  targetBrand: { type: SchemaType.STRING },
-                  domainRiskDetails: { type: SchemaType.STRING },
-                  hostingCountry: { type: SchemaType.STRING }
+                  extractedUrls: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  brandSpoofing: { type: Type.BOOLEAN },
+                  targetBrand: { type: Type.STRING },
+                  domainRiskDetails: { type: Type.STRING },
+                  hostingCountry: { type: Type.STRING }
                 },
                 required: ["extractedUrls", "brandSpoofing", "domainRiskDetails", "hostingCountry"]
               },
               campaignFingerprint: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                  messageHash: { type: SchemaType.STRING },
-                  archetype: { type: SchemaType.STRING },
-                  clusterTag: { type: SchemaType.STRING }
+                  messageHash: { type: Type.STRING },
+                  archetype: { type: Type.STRING },
+                  clusterTag: { type: Type.STRING }
                 },
                 required: ["messageHash", "archetype", "clusterTag"]
               },
               towerInfo: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                  id: { type: SchemaType.STRING },
-                  location: { type: SchemaType.STRING },
-                  siteName: { type: SchemaType.STRING },
-                  carrier: { type: SchemaType.STRING },
-                  distance: { type: SchemaType.STRING },
-                  signalStrength: { type: SchemaType.NUMBER },
-                  confidence: { type: SchemaType.NUMBER },
+                  id: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  siteName: { type: Type.STRING },
+                  carrier: { type: Type.STRING },
+                  distance: { type: Type.STRING },
+                  signalStrength: { type: Type.NUMBER },
+                  confidence: { type: Type.NUMBER },
                   coordinates: {
-                    type: SchemaType.OBJECT,
+                    type: Type.OBJECT,
                     properties: {
-                      lat: { type: SchemaType.NUMBER },
-                      lng: { type: SchemaType.NUMBER }
+                      lat: { type: Type.NUMBER },
+                      lng: { type: Type.NUMBER }
                     },
                     required: ["lat", "lng"]
                   }
@@ -493,31 +499,31 @@ export default function App() {
                 required: ["id", "location", "siteName", "carrier", "distance", "signalStrength", "confidence", "coordinates"]
               },
               layersResults: {
-                type: SchemaType.OBJECT,
+                type: Type.OBJECT,
                 properties: {
                   urgency: { 
-                    type: SchemaType.OBJECT, 
-                    properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
                     required: ["score", "details"]
                   },
                   financial: { 
-                    type: SchemaType.OBJECT, 
-                    properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
                     required: ["score", "details"]
                   },
                   url: { 
-                    type: SchemaType.OBJECT, 
-                    properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
                     required: ["score", "details"]
                   },
                   impersonation: { 
-                    type: SchemaType.OBJECT, 
-                    properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
                     required: ["score", "details"]
                   },
                   linguistic: { 
-                    type: SchemaType.OBJECT, 
-                    properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
+                    type: Type.OBJECT, 
+                    properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
                     required: ["score", "details"]
                   }
                 },
@@ -526,20 +532,10 @@ export default function App() {
             },
             required: ["riskPercentage", "reason", "inputSource", "geographicOrigin", "identityIntelligence", "urlForensics", "campaignFingerprint", "towerInfo", "layersResults"]
           }
-        },
-        systemInstruction: SYSTEM_PROMPT
+        }
       });
-      
-      console.log("Calling Gemini AI from client...");
-      
-      const generationResult = await model.generateContent(`Analyze this communication for registration scams. 
-        INPUT METHOD: ${inputSource.toUpperCase()}
-        SENDER NUMBER: ${senderNumber || 'Unknown'}
-        MESSAGE CONTENT: "${messageToScan || 'No message content provided - trace by number only'}"
-        
-        If no message content is provided, focus your analysis on the sender number's reputation, geographic origin, and likely network carrier.`);
 
-      const result: ScanResult = JSON.parse(generationResult.response.text());
+      const result: ScanResult = JSON.parse(response.text);
       console.log("Scan Result:", result);
       
       const currentMessage = messageToScan;
@@ -1436,8 +1432,7 @@ export default function App() {
                       </div>
                       <p className="text-sm text-blue-800 leading-relaxed">
                         This app uses the <strong>Gemini 3 Flash</strong> model on the free tier. 
-                        If you encounter "Quota Exceeded" errors, please wait a few minutes or try again tomorrow. 
-                        Ensure your API key is correctly set in <strong>Settings &gt; Secrets</strong>.
+                        If you encounter "Quota Exceeded" errors, the daily analysis limit has been reached.
                       </p>
                     </div>
                   </motion.div>
