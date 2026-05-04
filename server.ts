@@ -65,17 +65,24 @@ app.post("/api/scan", async (req, res) => {
     }
 
     const ai = getAI();
-    // Use gemini-1.5-flash as it's the stable one
-    const response = await ai.models.generateContent({
+    const model = ai.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      contents: `Analyze this communication for registration scams. 
-      INPUT METHOD: ${(inputSource || 'unknown').toUpperCase()}
-      SENDER NUMBER: ${senderNumber || 'Unknown'}
-      MESSAGE CONTENT: "${messageContent || 'No message content provided - trace by number only'}"
-      
-      If no message content is provided, focus your analysis on the sender number's reputation, geographic origin, and likely network carrier.`,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: SYSTEM_PROMPT,
+    });
+
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{
+          text: `Analyze this communication for registration scams. 
+          INPUT METHOD: ${(inputSource || 'unknown').toUpperCase()}
+          SENDER NUMBER: ${senderNumber || 'Unknown'}
+          MESSAGE CONTENT: "${messageContent || 'No message content provided - trace by number only'}"
+          
+          If no message content is provided, focus your analysis on the sender number's reputation, geographic origin, and likely network carrier.`
+        }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -172,7 +179,8 @@ app.post("/api/scan", async (req, res) => {
       }
     });
 
-    const jsonText = response.text || "{}";
+    const response = await result.response;
+    const jsonText = response.text();
     const cleanedJson = jsonText.replace(/```json\n?|```/g, '').trim();
     res.json(JSON.parse(cleanedJson));
   } catch (error: any) {
