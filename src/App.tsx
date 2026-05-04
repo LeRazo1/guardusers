@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, AlertTriangle, CheckCircle, Search, MessageSquare, Info, LogOut, LogIn, Globe, Smartphone, History, Flag, ExternalLink, ChevronRight, ShieldCheck, ShieldAlert, Zap, Trash2, Copy, X, MapPin, Share2 } from 'lucide-react';
+import { Shield, AlertTriangle, CheckCircle, Search, MessageSquare, Info, LogOut, LogIn, Globe, Smartphone, History, Flag, ExternalLink, ChevronRight, ShieldCheck, ShieldAlert, Zap, Trash2, Copy, X, MapPin, Share2, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { auth, db } from './firebase';
@@ -196,6 +196,10 @@ export default function App() {
   const [protectionEnabled, setProtectionEnabled] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [selectedScam, setSelectedScam] = useState<ScannedMessage | null>(null);
+  const [apiKeyValid, setApiKeyValid] = useState(() => {
+    const key = process.env.GEMINI_API_KEY;
+    return key && key !== 'undefined' && key !== 'null' && key.length > 5;
+  });
 
   const generateEvidenceReport = (scan: ScannedMessage) => {
     const doc = new jsPDF();
@@ -704,16 +708,34 @@ export default function App() {
       <Toaster position="top-center" richColors />
       <Navbar user={user} onLogin={handleLogin} onLogout={handleLogout} />
 
-      {(!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'undefined' || process.env.GEMINI_API_KEY === 'null') && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md px-4">
-          <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-3 shadow-lg animate-bounce">
-            <div className="bg-red-100 p-2 rounded-xl">
-              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+      {(!apiKeyValid) && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-lg px-4">
+          <div className="bg-white border-2 border-amber-200 p-5 rounded-3xl flex items-start gap-4 shadow-2xl">
+            <div className="bg-amber-100 p-3 rounded-2xl shrink-0">
+              <Key className="w-6 h-6 text-amber-600" />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-bold text-red-900">Gemini API Key Missing</p>
-              <p className="text-[10px] text-red-700 font-medium">Please add your key in <b>Settings &gt; Secrets</b> to enable scanning.</p>
+              <p className="text-sm font-black text-gray-900">Configure Gemini AI</p>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed font-medium">
+                To enable AI-powered scanning, you need to add your <b>Google AI Studio API Key</b> (even the free tier) to this app.
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[10px] bg-amber-600 text-white px-3 py-1.5 rounded-xl font-bold hover:bg-amber-700 transition-all flex items-center gap-1"
+                >
+                  Get Free Key <ExternalLink className="w-3 h-3" />
+                </a>
+                <span className="text-[9px] text-gray-400 font-bold uppercase">
+                  Then add as <code className="bg-gray-100 px-1 rounded text-gray-700">GEMINI_API_KEY</code> in <b>Settings &gt; Secrets</b>
+                </span>
+              </div>
             </div>
+            <button onClick={() => setApiKeyValid(true)} className="p-1 hover:bg-gray-100 rounded-lg text-gray-400">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
