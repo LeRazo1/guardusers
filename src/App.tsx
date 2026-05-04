@@ -504,10 +504,10 @@ export default function App() {
         errorMessage = "AI services are not configured. Please set your Gemini API Key in Settings > Secrets.";
       } else if (errorStr === "INVALID_AI_RESPONSE") {
         errorMessage = "AI returned an invalid response.";
+      } else if (errorStr === "INVALID_CONFIGURATION" || errorStr.toLowerCase().includes("invalid")) {
+        errorMessage = "Invalid AI configuration. Check your API key in Settings > Secrets.";
       } else if (errorStr.includes("quota") || errorStr.includes("429")) {
-        errorMessage = "Analysis limit reached. Please try later.";
-      } else if (errorStr.includes("API key not valid") || errorStr.includes("invalid")) {
-        errorMessage = "Invalid configuration.";
+        errorMessage = "Analysis limit reached (429). Please try later.";
       }
       
       toast.error(errorMessage);

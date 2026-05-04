@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 dotenv.config();
 
@@ -53,7 +53,7 @@ const getAI = () => {
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenerativeAI(apiKey);
 };
 
 app.post("/api/scan", async (req, res) => {
@@ -64,8 +64,9 @@ app.post("/api/scan", async (req, res) => {
       return res.status(400).json({ error: "Missing content or sender number" });
     }
 
-    const ai = getAI();
-    const model = ai.getGenerativeModel({ 
+    const genAI = getAI();
+    // Use gemini-1.5-flash which is widely available
+    const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
       systemInstruction: SYSTEM_PROMPT,
     });
@@ -85,57 +86,57 @@ app.post("/api/scan", async (req, res) => {
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            riskPercentage: { type: Type.NUMBER },
-            reason: { type: Type.STRING },
-            inputSource: { type: Type.STRING },
-            geographicOrigin: { type: Type.STRING },
+            riskPercentage: { type: SchemaType.NUMBER },
+            reason: { type: SchemaType.STRING },
+            inputSource: { type: SchemaType.STRING },
+            geographicOrigin: { type: SchemaType.STRING },
             identityIntelligence: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                normalizedNumber: { type: Type.STRING },
-                reputationScore: { type: Type.NUMBER },
-                threatActorProfile: { type: Type.STRING },
-                isSpoofed: { type: Type.BOOLEAN }
+                normalizedNumber: { type: SchemaType.STRING },
+                reputationScore: { type: SchemaType.NUMBER },
+                threatActorProfile: { type: SchemaType.STRING },
+                isSpoofed: { type: SchemaType.BOOLEAN }
               },
               required: ["normalizedNumber", "reputationScore", "isSpoofed"]
             },
             urlForensics: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                extractedUrls: { type: Type.ARRAY, items: { type: Type.STRING } },
-                brandSpoofing: { type: Type.BOOLEAN },
-                targetBrand: { type: Type.STRING },
-                domainRiskDetails: { type: Type.STRING },
-                hostingCountry: { type: Type.STRING }
+                extractedUrls: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                brandSpoofing: { type: SchemaType.BOOLEAN },
+                targetBrand: { type: SchemaType.STRING },
+                domainRiskDetails: { type: SchemaType.STRING },
+                hostingCountry: { type: SchemaType.STRING }
               },
               required: ["extractedUrls", "brandSpoofing", "domainRiskDetails", "hostingCountry"]
             },
             campaignFingerprint: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                messageHash: { type: Type.STRING },
-                archetype: { type: Type.STRING },
-                clusterTag: { type: Type.STRING }
+                messageHash: { type: SchemaType.STRING },
+                archetype: { type: SchemaType.STRING },
+                clusterTag: { type: SchemaType.STRING }
               },
               required: ["messageHash", "archetype", "clusterTag"]
             },
             towerInfo: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                id: { type: Type.STRING },
-                location: { type: Type.STRING },
-                siteName: { type: Type.STRING },
-                carrier: { type: Type.STRING },
-                distance: { type: Type.STRING },
-                signalStrength: { type: Type.NUMBER },
-                confidence: { type: Type.NUMBER },
+                id: { type: SchemaType.STRING },
+                location: { type: SchemaType.STRING },
+                siteName: { type: SchemaType.STRING },
+                carrier: { type: SchemaType.STRING },
+                distance: { type: SchemaType.STRING },
+                signalStrength: { type: SchemaType.NUMBER },
+                confidence: { type: SchemaType.NUMBER },
                 coordinates: {
-                  type: Type.OBJECT,
+                  type: SchemaType.OBJECT,
                   properties: {
-                    lat: { type: Type.NUMBER },
-                    lng: { type: Type.NUMBER }
+                    lat: { type: SchemaType.NUMBER },
+                    lng: { type: SchemaType.NUMBER }
                   },
                   required: ["lat", "lng"]
                 }
@@ -143,31 +144,31 @@ app.post("/api/scan", async (req, res) => {
               required: ["id", "location", "siteName", "carrier", "distance", "signalStrength", "confidence", "coordinates"]
             },
             layersResults: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
                 urgency: { 
-                  type: Type.OBJECT, 
-                  properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                  type: SchemaType.OBJECT, 
+                  properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
                   required: ["score", "details"]
                 },
                 financial: { 
-                  type: Type.OBJECT, 
-                  properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                  type: SchemaType.OBJECT, 
+                  properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
                   required: ["score", "details"]
                 },
                 url: { 
-                  type: Type.OBJECT, 
-                  properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                  type: SchemaType.OBJECT, 
+                  properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
                   required: ["score", "details"]
                 },
                 impersonation: { 
-                  type: Type.OBJECT, 
-                  properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                  type: SchemaType.OBJECT, 
+                  properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
                   required: ["score", "details"]
                 },
                 linguistic: { 
-                  type: Type.OBJECT, 
-                  properties: { score: { type: Type.NUMBER }, details: { type: Type.STRING } },
+                  type: SchemaType.OBJECT, 
+                  properties: { score: { type: SchemaType.NUMBER }, details: { type: SchemaType.STRING } },
                   required: ["score", "details"]
                 }
               },
@@ -185,7 +186,12 @@ app.post("/api/scan", async (req, res) => {
     res.json(JSON.parse(cleanedJson));
   } catch (error: any) {
     console.error("AI Scan Error:", error);
-    res.status(500).json({ error: error.message || "Internal server error" });
+    // Explicitly handle API key errors to send back a string that the frontend can recognize
+    const errorMessage = error.message || String(error);
+    if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("API key not valid")) {
+       return res.status(401).json({ error: "INVALID_CONFIGURATION" });
+    }
+    res.status(500).json({ error: errorMessage });
   }
 });
 
