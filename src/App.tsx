@@ -430,7 +430,7 @@ export default function App() {
       console.log("Calling Gemini AI from client...");
       
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-flash-latest",
         contents: `Analyze this communication for registration scams. 
         INPUT METHOD: ${inputSource.toUpperCase()}
         SENDER NUMBER: ${senderNumber || 'Unknown'}
@@ -535,7 +535,15 @@ export default function App() {
         }
       });
 
-      const result: ScanResult = JSON.parse(response.text);
+      const jsonText = response.text || "{}";
+      const cleanedJson = jsonText.replace(/```json\n?|```/g, '').trim();
+      let result: ScanResult;
+      try {
+        result = JSON.parse(cleanedJson);
+      } catch (parseError) {
+        console.error("JSON Parse Error:", parseError, "Raw Text:", jsonText);
+        throw new Error("INVALID_AI_RESPONSE");
+      }
       console.log("Scan Result:", result);
       
       const currentMessage = messageToScan;
@@ -629,7 +637,20 @@ export default function App() {
       setActiveTab('dashboard');
     } catch (error: any) {
       console.error("Scan error details:", error);
-      toast.error("Analysis failed. Please check your connection or try again later.");
+      let errorMessage = "Analysis failed. Please try again.";
+      
+      const errorStr = error.message || String(error);
+      if (errorStr === "API_KEY_MISSING") {
+        errorMessage = "AI services are not configured.";
+      } else if (errorStr === "INVALID_AI_RESPONSE") {
+        errorMessage = "AI returned an invalid response.";
+      } else if (errorStr.includes("quota") || errorStr.includes("429")) {
+        errorMessage = "Analysis limit reached. Please try later.";
+      } else if (errorStr.includes("API key not valid") || errorStr.includes("invalid")) {
+        errorMessage = "Invalid configuration.";
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsScanning(false);
     }
