@@ -421,10 +421,13 @@ export default function App() {
     try {
       // Initialize Gemini AI with the platform-provided key
       // The platform handles injecting process.env.GEMINI_API_KEY into the Vite build
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
       
-      if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-        toast.error("Gemini API Key is missing. Please ensure it is set in 'Settings > Secrets'.");
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.length < 5) {
+        toast.error("Gemini API Key is missing or invalid. Please ensure it is set in 'Settings > Secrets'.", {
+          description: "Go to Settings > Secrets and add GEMINI_API_KEY with your value from Google AI Studio.",
+          duration: 6000,
+        });
         setIsScanning(false);
         return;
       }
@@ -701,13 +704,15 @@ export default function App() {
       <Toaster position="top-center" richColors />
       <Navbar user={user} onLogin={handleLogin} onLogout={handleLogout} />
 
-      {(!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'undefined') && (
+      {(!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'undefined' || process.env.GEMINI_API_KEY === 'null') && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md px-4">
-          <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-3 shadow-lg">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+          <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-3 shadow-lg animate-bounce">
+            <div className="bg-red-100 p-2 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            </div>
             <div className="flex-1">
               <p className="text-xs font-bold text-red-900">Gemini API Key Missing</p>
-              <p className="text-[10px] text-red-700">Please set your API key in Settings &gt; Secrets to enable AI scanning.</p>
+              <p className="text-[10px] text-red-700 font-medium">Please add your key in <b>Settings &gt; Secrets</b> to enable scanning.</p>
             </div>
           </div>
         </div>
