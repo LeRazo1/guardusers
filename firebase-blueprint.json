@@ -36,6 +36,48 @@
         "status": { "type": "string", "enum": ["pending", "verified", "dismissed"], "description": "Status of the report." }
       },
       "required": ["content", "reporterId", "timestamp", "status"]
+    },
+    "MaliciousNumber": {
+      "title": "Malicious Number",
+      "description": "Aggregate data for a phone number identified in scams.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string", "description": "The E.164 normalized number." },
+        "reportCount": { "type": "number", "description": "Number of times reported." },
+        "severityScore": { "type": "number", "description": "Aggregated risk score." },
+        "firstSeen": { "type": "string", "format": "date-time" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "linkedUserIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["number", "reportCount", "severityScore"]
+    },
+    "MaliciousDomain": {
+      "title": "Malicious Domain",
+      "description": "Forensics on domains found in scam messages.",
+      "type": "object",
+      "properties": {
+        "domain": { "type": "string" },
+        "brandSpoofing": { "type": "string", "description": "The brand being mimicked." },
+        "age": { "type": "string" },
+        "registrar": { "type": "string" },
+        "reportCount": { "type": "number" },
+        "firstSeen": { "type": "string", "format": "date-time" }
+      },
+      "required": ["domain", "reportCount"]
+    },
+    "ScamCampaign": {
+      "title": "Scam Campaign",
+      "description": "A cluster of similar messages representing a coordinated campaign.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "messageHash": { "type": "string" },
+        "messageCount": { "type": "number" },
+        "patternDetails": { "type": "string" },
+        "associatedNumbers": { "type": "array", "items": { "type": "string" } },
+        "associatedDomains": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["messageHash", "messageCount"]
     }
   },
   "firestore": {
@@ -50,6 +92,18 @@
     "/scamReports/{reportId}": {
       "schema": "ScamReport",
       "description": "Collection of student-submitted scam reports."
+    },
+    "/maliciousNumbers/{numberId}": {
+      "schema": "MaliciousNumber",
+      "description": "Global registry of scammer numbers."
+    },
+    "/maliciousDomains/{domainId}": {
+      "schema": "MaliciousDomain",
+      "description": "Global registry of scammer domains."
+    },
+    "/scamCampaigns/{campaignId}": {
+      "schema": "ScamCampaign",
+      "description": "Clusters of coordinated scam activities."
     }
   }
 }
