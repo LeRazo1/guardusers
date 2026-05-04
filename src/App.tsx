@@ -196,10 +196,6 @@ export default function App() {
   const [protectionEnabled, setProtectionEnabled] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [selectedScam, setSelectedScam] = useState<ScannedMessage | null>(null);
-  const [apiKeyValid, setApiKeyValid] = useState(() => {
-    const key = process.env.GEMINI_API_KEY;
-    return key && key !== 'undefined' && key !== 'null' && key.length > 5;
-  });
 
   const generateEvidenceReport = (scan: ScannedMessage) => {
     const doc = new jsPDF();
@@ -427,11 +423,8 @@ export default function App() {
       // The platform handles injecting process.env.GEMINI_API_KEY into the Vite build
       const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
       
-      if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.length < 5) {
-        toast.error("Gemini API Key is missing or invalid. Please ensure it is set in 'Settings > Secrets'.", {
-          description: "Go to Settings > Secrets and add GEMINI_API_KEY with your value from Google AI Studio.",
-          duration: 6000,
-        });
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+        toast.error("AI analysis is currently unavailable.");
         setIsScanning(false);
         return;
       }
@@ -708,37 +701,7 @@ export default function App() {
       <Toaster position="top-center" richColors />
       <Navbar user={user} onLogin={handleLogin} onLogout={handleLogout} />
 
-      {(!apiKeyValid) && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] w-full max-w-lg px-4">
-          <div className="bg-white border-2 border-amber-200 p-5 rounded-3xl flex items-start gap-4 shadow-2xl">
-            <div className="bg-amber-100 p-3 rounded-2xl shrink-0">
-              <Key className="w-6 h-6 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-black text-gray-900">Configure Gemini AI</p>
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed font-medium">
-                To enable AI-powered scanning, you need to add your <b>Google AI Studio API Key</b> (even the free tier) to this app.
-              </p>
-              <div className="mt-3 flex items-center gap-3">
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-[10px] bg-amber-600 text-white px-3 py-1.5 rounded-xl font-bold hover:bg-amber-700 transition-all flex items-center gap-1"
-                >
-                  Get Free Key <ExternalLink className="w-3 h-3" />
-                </a>
-                <span className="text-[9px] text-gray-400 font-bold uppercase">
-                  Then add as <code className="bg-gray-100 px-1 rounded text-gray-700">GEMINI_API_KEY</code> in <b>Settings &gt; Secrets</b>
-                </span>
-              </div>
-            </div>
-            <button onClick={() => setApiKeyValid(true)} className="p-1 hover:bg-gray-100 rounded-lg text-gray-400">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+
 
       <AnimatePresence>
         {showTutorial && (
