@@ -48,8 +48,50 @@ EVIDENCE GENERATION:
 - Highlight specific "Forensic Indicators" (bad links, malicious numbers, recurring templates).
 `;
 
+const getApiKey = (): string => {
+  const envKeys = Object.keys(process.env);
+  
+  // Find all potential Gemini keys
+  const potentialKeys = envKeys
+    .filter(k => /gemini.*key/i.test(k))
+    .map(k => process.env[k] || "")
+    .map(val => val.trim())
+    .filter(val => val.length > 0);
+    
+  let bestKey = potentialKeys[0] || "";
+  
+  // Always prefer a key that starts with AIza
+  const validLookingKey = potentialKeys.find(val => val.startsWith("AIzaSy") || cleanCyrillic(val).startsWith("AIzaSy"));
+  if (validLookingKey) {
+    bestKey = validLookingKey;
+  }
+  
+  return cleanCyrillic(bestKey);
+};
+
+function cleanCyrillic(str: string): string {
+  // Frequently, OCR or copy-paste introduces cyrillic lookalikes
+  const map: Record<string, string> = {
+    'А': 'A', 'а': 'a',
+    'В': 'B', 'в': 'b',
+    'С': 'C', 'с': 'c',
+    'Е': 'E', 'е': 'e',
+    'Н': 'H', 'н': 'h',
+    'І': 'I', 'і': 'i',
+    'Ј': 'J', 'ј': 'j',
+    'К': 'K', 'к': 'k',
+    'М': 'M', 'м': 'm',
+    'О': 'O', 'о': 'o',
+    'Р': 'P', 'р': 'p',
+    'Т': 'T', 'т': 't',
+    'Х': 'X', 'х': 'x',
+    'У': 'Y', 'у': 'y'
+  };
+  return str.replace(/[АаВвСсЕеНнІіЈјКкМмОоРрТтХхУу]/g, match => map[match] || match);
+}
+
 const getAI = () => {
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.GEMINI_APLKEY || "").trim();
+  const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
@@ -190,7 +232,7 @@ app.post("/api/scan", async (req, res) => {
     
     // Check for common error patterns
     if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("API key not valid")) {
-       const key = (process.env.GEMINI_API_KEY || process.env.GEMINI_APLKEY || "").trim();
+       const key = getApiKey();
        let hint = "Check your API key in Settings > Secrets. Make sure there are no extra spaces or quotes.";
        
        if (key.toLowerCase().includes("free tier")) {
@@ -201,10 +243,9 @@ app.post("/api/scan", async (req, res) => {
        return res.status(401).json({ error: "INVALID_CONFIGURATION", details: hint });
     }
     if (errorMessage.includes("API_KEY_MISSING") || errorMessage.includes("key is missing")) {
-       const hasTypoKey = !!process.env.GEMINI_APLKEY;
        return res.status(401).json({ 
          error: "API_KEY_MISSING", 
-         details: hasTypoKey ? "You have a typo in your secret name: GEMINI_APLKEY should be GEMINI_API_KEY." : "No Gemini API key found. Add a secret named GEMINI_API_KEY." 
+         details: "No Gemini API key found. Add a secret named GEMINI_API_KEY." 
        });
     }
     
@@ -213,21 +254,20 @@ app.post("/api/scan", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-  const typoKey = (process.env.GEMINI_APLKEY || "").trim();
+  const apiKey = getApiKey();
+  const envKeys = Object.keys(process.env);
+  const geminiEnvKeys = envKeys.filter(k => /gemini.*key/i.test(k));
   
   res.json({ 
     status: "ok", 
     env: process.env.NODE_ENV,
     diagnostics: {
-      hasGEMINI_API_KEY: !!apiKey,
-      apiKeyLength: apiKey.length,
-      apiKeyPrefix: apiKey ? apiKey.substring(0, 7) + "..." : "none",
-      hasGEMINI_APLKEY: !!typoKey,
-      typoKeyLength: typoKey.length,
-      typoKeyPrefix: typoKey ? typoKey.substring(0, 7) + "..." : "none",
-      likelyValidFormat: (apiKey || typoKey).startsWith("AIzaSy"),
-      isLiteralPlaceholder: (apiKey || typoKey).toLowerCase().includes("free tier") || (apiKey || typoKey).toLowerCase().includes("your_key")
+      foundKeyCount: geminiEnvKeys.length,
+      keysFound: geminiEnvKeys,
+      hasValidLookingKey: apiKey.startsWith("AIzaSy"),
+      isLiteralPlaceholder: apiKey.toLowerCase().includes("free tier") || apiKey.toLowerCase().includes("your_key"),
+      keyPrefix: apiKey ? apiKey.substring(0, 7) + "..." : "none",
+      keyLength: apiKey.length
     }
   });
 });
