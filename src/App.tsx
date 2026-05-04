@@ -400,7 +400,9 @@ export default function App() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "SCAN_FAILED");
+        const err = new Error(errorData.error || "SCAN_FAILED");
+        (err as any).details = errorData.details;
+        throw err;
       }
 
       const result: ScanResult = await response.json();
@@ -500,14 +502,18 @@ export default function App() {
       let errorMessage = "Analysis failed. Please try again.";
       
       const errorStr = error.message || String(error);
+      const details = error.details;
+
       if (errorStr === "API_KEY_MISSING" || errorStr.includes("not set in environment")) {
-        errorMessage = "AI services are not configured. Please set your Gemini API Key in Settings > Secrets.";
+        errorMessage = details || "AI services are not configured. Please set your Gemini API Key in Settings > Secrets.";
       } else if (errorStr === "INVALID_AI_RESPONSE") {
         errorMessage = "AI returned an invalid response.";
-      } else if (errorStr === "INVALID_CONFIGURATION" || errorStr.toLowerCase().includes("invalid")) {
-        errorMessage = "Invalid AI configuration. Check your API key in Settings > Secrets.";
+      } else if (errorStr === "INVALID_CONFIGURATION") {
+        errorMessage = details || "Invalid AI configuration. Check your API key in Settings > Secrets.";
       } else if (errorStr.includes("quota") || errorStr.includes("429")) {
         errorMessage = "Analysis limit reached (429). Please try later.";
+      } else {
+        errorMessage = `Analysis failed: ${errorStr}`;
       }
       
       toast.error(errorMessage);

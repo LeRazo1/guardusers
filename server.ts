@@ -49,7 +49,7 @@ EVIDENCE GENERATION:
 `;
 
 const getAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GEMINI_APLKEY || "").trim();
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
@@ -186,19 +186,49 @@ app.post("/api/scan", async (req, res) => {
     res.json(JSON.parse(cleanedJson));
   } catch (error: any) {
     console.error("AI Scan Error:", error);
-    // Explicitly handle API key errors to send back a string that the frontend can recognize
     const errorMessage = error.message || String(error);
+    
+    // Check for common error patterns
     if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("API key not valid")) {
-       return res.status(401).json({ error: "INVALID_CONFIGURATION" });
+       const key = (process.env.GEMINI_API_KEY || process.env.GEMINI_APLKEY || "").trim();
+       let hint = "Check your API key in Settings > Secrets. Make sure there are no extra spaces or quotes.";
+       
+       if (key.toLowerCase().includes("free tier")) {
+         hint = "It looks like you pasted the 'Free Tier' label instead of the actual key. Copy the string starting with 'AIzaSy'.";
+       } else if (key && !key.startsWith("AIzaSy")) {
+         hint = `Your API key doesn't look like a standard Gemini key (it starts with '${key.substring(0, 3)}...'). Make sure you copied the correct value.`;
+       }
+       return res.status(401).json({ error: "INVALID_CONFIGURATION", details: hint });
     }
+    if (errorMessage.includes("API_KEY_MISSING") || errorMessage.includes("key is missing")) {
+       const hasTypoKey = !!process.env.GEMINI_APLKEY;
+       return res.status(401).json({ 
+         error: "API_KEY_MISSING", 
+         details: hasTypoKey ? "You have a typo in your secret name: GEMINI_APLKEY should be GEMINI_API_KEY." : "No Gemini API key found. Add a secret named GEMINI_API_KEY." 
+       });
+    }
+    
     res.status(500).json({ error: errorMessage });
   }
 });
 
 app.get("/api/health", (req, res) => {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  const typoKey = (process.env.GEMINI_APLKEY || "").trim();
+  
   res.json({ 
     status: "ok", 
-    env: process.env.NODE_ENV
+    env: process.env.NODE_ENV,
+    diagnostics: {
+      hasGEMINI_API_KEY: !!apiKey,
+      apiKeyLength: apiKey.length,
+      apiKeyPrefix: apiKey ? apiKey.substring(0, 7) + "..." : "none",
+      hasGEMINI_APLKEY: !!typoKey,
+      typoKeyLength: typoKey.length,
+      typoKeyPrefix: typoKey ? typoKey.substring(0, 7) + "..." : "none",
+      likelyValidFormat: (apiKey || typoKey).startsWith("AIzaSy"),
+      isLiteralPlaceholder: (apiKey || typoKey).toLowerCase().includes("free tier") || (apiKey || typoKey).toLowerCase().includes("your_key")
+    }
   });
 });
 
