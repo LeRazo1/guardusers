@@ -498,8 +498,8 @@ export default function App() {
       let errorMessage = "Analysis failed. Please try again.";
       
       const errorStr = error.message || String(error);
-      if (errorStr === "API_KEY_MISSING") {
-        errorMessage = "AI services are not configured.";
+      if (errorStr === "API_KEY_MISSING" || errorStr.includes("not set in environment")) {
+        errorMessage = "AI services are not configured. Please set your Gemini API Key in Settings > Secrets.";
       } else if (errorStr === "INVALID_AI_RESPONSE") {
         errorMessage = "AI returned an invalid response.";
       } else if (errorStr.includes("quota") || errorStr.includes("429")) {
@@ -1310,8 +1310,9 @@ export default function App() {
                         <h3 className="font-bold">AI Studio Free Tier</h3>
                       </div>
                       <p className="text-sm text-blue-800 leading-relaxed">
-                        This app uses the <strong>Gemini 3 Flash</strong> model on the free tier. 
-                        If you encounter "Quota Exceeded" errors, the daily analysis limit has been reached.
+                        This app uses the <strong>Gemini 1.5 Flash</strong> model on the free tier. 
+                        If you encounter "Quota Exceeded" errors, the daily limit has been reached.
+                        Ensure your API key is correctly set in <strong>Settings &gt; Secrets</strong>.
                       </p>
                     </div>
                   </motion.div>
