@@ -51,25 +51,28 @@ EVIDENCE GENERATION:
 const getApiKey = (): string => {
   const envKeys = Object.keys(process.env);
   
-  // Find all potential Gemini keys
-  const potentialKeys = envKeys
-    .filter(k => /gemini.*key/i.test(k))
-    .map(k => process.env[k] || "")
-    .map(val => val.trim())
-    .filter(val => val.length > 0);
-    
-  let bestKey = potentialKeys[0] || "";
+  let bestKey = process.env.CUSTOM_GEMINI_API_KEY || process.env.MY_API_KEY || process.env.GEMINI_API_KEY || "";
   
-  // Always prefer a key that starts with AIza
-  const validLookingKey = potentialKeys.find(val => val.startsWith("AIzaSy") || cleanCyrillic(val).startsWith("AIzaSy"));
-  if (validLookingKey) {
-    bestKey = validLookingKey;
+  if (!bestKey) {
+    const potentialKeys = envKeys
+      .filter(k => /gemini.*key/i.test(k) || k === "Gemini_API_Key")
+      .map(k => process.env[k] || "")
+      .map(val => val.trim())
+      .filter(val => val.length > 0);
+      
+    bestKey = potentialKeys[0] || "";
+    
+    // Always prefer a key that starts with AIza
+    const validLookingKey = potentialKeys.find(val => val.startsWith("AIzaSy") || cleanApiKey(val).startsWith("AIzaSy"));
+    if (validLookingKey) {
+      bestKey = validLookingKey;
+    }
   }
   
-  return cleanCyrillic(bestKey);
+  return cleanApiKey(bestKey.trim());
 };
 
-function cleanCyrillic(str: string): string {
+function cleanApiKey(str: string): string {
   // Frequently, OCR or copy-paste introduces cyrillic lookalikes
   const map: Record<string, string> = {
     'А': 'A', 'а': 'a',
@@ -87,7 +90,10 @@ function cleanCyrillic(str: string): string {
     'Х': 'X', 'х': 'x',
     'У': 'Y', 'у': 'y'
   };
-  return str.replace(/[АаВвСсЕеНнІіЈјКкМмОоРрТтХхУу]/g, match => map[match] || match);
+  let cleaned = str.replace(/[АаВвСсЕеНнІіЈјКкМмОоРрТтХхУу]/g, match => map[match] || match);
+  // Remove all invisible characters, spaces, and anything outside standard Base64URL
+  cleaned = cleaned.replace(/[^a-zA-Z0-9_\-]/g, '');
+  return cleaned;
 }
 
 const getAI = () => {
@@ -231,6 +237,13 @@ app.post("/api/scan", async (req, res) => {
     const errorMessage = error.message || String(error);
     
     // Check for common error patterns
+    if (errorMessage.includes("expected pattern") || errorMessage.includes("DOMException")) {
+       return res.status(401).json({ 
+         error: "INVALID_CONFIGURATION", 
+         details: "Your API key contains hidden or modified characters (often caused by browser translation). Please disable browser translation, then copy the exact key."
+       });
+    }
+    
     if (errorMessage.includes("API_KEY_INVALID") || errorMessage.includes("API key not valid")) {
        const key = getApiKey();
        let hint = "Check your API key in Settings > Secrets. Make sure there are no extra spaces or quotes.";
@@ -239,13 +252,15 @@ app.post("/api/scan", async (req, res) => {
          hint = "It looks like you pasted the 'Free Tier' label instead of the actual key. Copy the string starting with 'AIzaSy'.";
        } else if (key && !key.startsWith("AIzaSy")) {
          hint = `Your API key doesn't look like a standard Gemini key (it starts with '${key.substring(0, 3)}...'). Make sure you copied the correct value.`;
+       } else if (/[^\x20-\x7E]/.test(key)) {
+         hint = "Your API key contains invalid formatting characters. Disable browser translation and re-copy it.";
        }
        return res.status(401).json({ error: "INVALID_CONFIGURATION", details: hint });
     }
     if (errorMessage.includes("API_KEY_MISSING") || errorMessage.includes("key is missing")) {
        return res.status(401).json({ 
          error: "API_KEY_MISSING", 
-         details: "No Gemini API key found. Add a secret named GEMINI_API_KEY." 
+         details: "No Gemini API key found. Please add a secret named CUSTOM_GEMINI_API_KEY with your key." 
        });
     }
     
