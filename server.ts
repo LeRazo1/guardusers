@@ -51,25 +51,32 @@ EVIDENCE GENERATION:
 const getApiKey = (): string => {
   const envKeys = Object.keys(process.env);
   
-  let bestKey = process.env.CUSTOM_GEMINI_API_KEY || process.env.MY_API_KEY || process.env.GEMINI_API_KEY || "";
-  
-  if (!bestKey) {
-    const potentialKeys = envKeys
-      .filter(k => /gemini.*key/i.test(k) || k === "Gemini_API_Key")
-      .map(k => process.env[k] || "")
-      .map(val => val.trim())
-      .filter(val => val.length > 0);
-      
-    bestKey = potentialKeys[0] || "";
+  const potentialKeys = envKeys
+    .filter(k => k.toLowerCase().includes('gemini') || k.toLowerCase().includes('api_key') || k.toLowerCase().includes('secret'))
+    .map(k => process.env[k] || "")
+    .map(val => val.trim())
+    .filter(val => val.length > 10); // ignore short dummy values like "MY_API_KEY=xxx"
     
-    // Always prefer a key that starts with AIza
-    const validLookingKey = potentialKeys.find(val => val.startsWith("AIzaSy") || cleanApiKey(val).startsWith("AIzaSy"));
-    if (validLookingKey) {
-      bestKey = validLookingKey;
+  let bestKey = "";
+  
+  for (const rawKey of potentialKeys) {
+    const cleaned = cleanApiKey(rawKey);
+    // Google API keys usually start with AIza or Alza (often OCR'd as lowercase L)
+    if (cleaned.startsWith("AIza") || cleaned.startsWith("Alza") || cleaned.startsWith("A1za")) {
+      bestKey = cleaned;
+      // aggressively fix the AIzaSy prefix if OCR messed it up
+      if (bestKey.startsWith("AlzaSy") || bestKey.startsWith("A1zaSy")) {
+        bestKey = "AIzaSy" + bestKey.substring(6);
+      }
+      break;
     }
   }
   
-  return cleanApiKey(bestKey.trim());
+  if (!bestKey && potentialKeys.length > 0) {
+    bestKey = cleanApiKey(potentialKeys[0]);
+  }
+  
+  return bestKey;
 };
 
 function cleanApiKey(str: string): string {
@@ -240,7 +247,7 @@ app.post("/api/scan", async (req, res) => {
     if (errorMessage.includes("expected pattern") || errorMessage.includes("DOMException")) {
        return res.status(401).json({ 
          error: "INVALID_CONFIGURATION", 
-         details: "Your API key contains hidden or modified characters (often caused by browser translation). Please disable browser translation, then copy the exact key."
+         details: "Your API key contains formatting errors. Please ensure you copied the exact characters from Google AI Studio without any extra text."
        });
     }
     
